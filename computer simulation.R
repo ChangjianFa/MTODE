@@ -195,36 +195,16 @@ test_x <- function(d=d,n=n){
     
     ## lasso
     time_lasso <- system.time({
-      lasso_model <- glmnet(X, Y, alpha = 1)
-      cv_lasso <- cv.glmnet(X, Y, alpha = 1)
-      best_lasso_lambda <- cv_lasso$lambda.min
-      lasso_final_model <- glmnet(X, Y, alpha = 1, lambda = best_lasso_lambda)
+      cv_lasso <- cv.glmnet(X, Y, alpha = 1, nfolds = 5) 
+      beta_lasso <- coef(cv_lasso, s = "lambda.min")
     })
     beta_lasso <- as.vector(coef(lasso_final_model)[-1])
     beta0_scaled_lasso <- coef(lasso_final_model)[1]
     # matrix(beta_lasso,p+1,p)
     ## sglasso
     time_sglasso <- system.time({
-      K <- 5
-      folds <- sample(rep(1:K, length.out = n))  # 创建随机分组
-      
-      lambda_seq <- sparsegl(X, Y, group = group)$lambda  # 获取候选 lambda 值
-      cv_errors <- rep(0, length(lambda_seq))  # 存储每个 lambda 的误差
-      
-      for (k in 1:K) {
-        X_train <- X[folds != k, , drop = FALSE]  # 训练集
-        y_train <- Y[folds != k]
-        X_test  <- X[folds == k, , drop = FALSE]  # 测试集
-        y_test  <- Y[folds == k]
-        sgl_cv <- sparsegl(X_train, y_train, group = group, lambda = lambda_seq)
-        preds <- predict(sgl_cv, newx = X_test, s = lambda_seq)
-        mse <- colMeans((preds - y_test)^2)  # 计算 MSE
-        cv_errors <- cv_errors + mse
-      }
-      cv_errors <- cv_errors / K
-      lambda_cv <- lambda_seq[which.min(cv_errors)]
-      sgl_best <- sparsegl(X, Y, group = group, lambda = lambda_cv)
-      beta_sglasso <- coef(sgl_best, s = lambda_cv)
+      cv_fit <- cv.sparsegl(X, Y, group = group, nfolds = 5)
+      beta_sglasso <- coef(cv_fit, s = "lambda.min")
     })
     beta_sglasso <- as.vector(beta_sglasso[-1])
     beta0_scaled_sglasso <- beta_sglasso[1]
