@@ -1,0 +1,264 @@
+test_x <- function(data,tgrid,snr,n){
+  p=ncol(data)
+  idx = seq(3,(p*n_order+2))
+  idx_list = rep(list(split(idx, cut(seq_along(idx), breaks = p, labels = FALSE))), times = p)
+  idx_list <- lapply(seq_along(idx_list), function(i) {
+    idx_list[[i]][[i]] = c(1,2,idx_list[[i]][[i]])
+    return(idx_list[[i]])
+  })
+  
+  signal_var <- apply(data, 2, var)
+  snr_power_ratio <- 10^(snr / 10)
+  noise_var <- signal_var / snr_power_ratio
+  noise_sd <- sqrt(noise_var)
+  noise <- matrix(rnorm(n * p, sd = noise_sd), n, p, byrow = TRUE)
+  obs <- data[seq(1, nrow(data), length.out = n), ] + noise
+  times = tgrid[seq(1,nrow(data), length.out = n)]
+  
+  # ture effect
+  data_basic <- do.call(cbind, lapply(1:ncol(data), function(xi) {
+    t(apply(data[, xi, drop = FALSE], 1, psi))
+  }))
+  d_effect_list <- lapply(1:p, function(j) {
+    d_effect <- sweep(data_basic, 2, thetas[,j], "*")
+    d_effect <- t(sapply(1:(ncol(d_effect) /n_order), function(i) {
+      cols <- (n_order*(i-1)+1):(n_order*i)  
+      rowSums(d_effect[, cols, drop = FALSE])
+    }))})
+  d_effect_list <- lapply(d_effect_list,t)
+  
+  d_effect_fs_list <- lapply(d_effect_list, function(mat) {
+    apply(mat, 2, function(col) splinefun(x = tgrid, y = col))
+  })
+  
+  mod <- function (Time, State, Pars, basis) {
+    with(as.list(c(State, Pars)), {
+      dy = basis(Time)
+      return(list(dy))
+    })
+  }
+  Pars <- NULL
+  State1 <- matrix(0,p,p)
+  diag(State1) <- State
+  
+  effect_list <- lapply(seq_along(d_effect_fs_list), function(i) {
+    mat <- d_effect_fs_list[[i]]
+    sapply(1:length(mat),function(xi) 
+      ode(func = mod, y = State1[i,xi], parms = Pars, 
+          basis = mat[[xi]], times = tgrid)[,2])
+  })
+  
+  trans_out <- function(out,j){
+    id = paste0("gene",j)
+    
+    out = as.data.frame(out)
+    colnames(out) = c('time',"est",paste0("gene",1:p))
+    out <- out[, colSums(out) != 0, drop = FALSE]
+    out = melt(out,id.vars = 'time')
+    out$group = 'Dep'
+    out$group[out$variable == id] = 'Ind'
+    out$group[out$variable == 'est'] = 'est'
+    out
+  }
+  trans_effect_list <- lapply(seq_along(effect_list), function(i)
+    effect = trans_out(cbind(tgrid,rowSums(effect_list[[i]]),effect_list[[i]]),i))
+  
+  effect_all <- do.call(rbind, lapply(seq_along(trans_effect_list), function(i) {
+    df <- trans_effect_list[[i]]
+    df$equations <- paste0("X", i)
+    return(df)
+  }))
+  
+  
+  p0 = ggplot(effect_all) + 
+    geom_line(mapping = aes(x=time,y = value,group = variable,color = group))+
+    scale_color_manual(values = c(est = 'blue',
+                                  Ind = 'red',
+                                  Dep = 'green'))+
+    theme_minimal() + facet_wrap(~equations, scales = "free_y")
+  p0
+  
+  ODEsolve <- function(data,times=times,n_order=n_order){
+    #smooth data
+    fit <- lapply(1:p, function (xi) 
+      smooth.spline(times, as.numeric(data[,xi])))
+    
+    x_smooth <- sapply(1:p, function(xi)  predict(fit[[xi]], x = times)$y)
+    colnames(x_smooth)=colnames(data)=c(paste0("out",1:p))
+    plot_ori <- melt(data.frame(times = times, data), id.vars = 'times')
+    plot_smooth <- melt(data.frame(times = times, x_smooth), id.vars = 'times')
+    p1 = ggplot() + geom_point(plot_ori,mapping = aes(x=times, y = value),color = 'black',size=0.1)+
+      geom_line(plot_smooth, mapping = aes(x=times,y = value,))+
+      theme_minimal() + facet_wrap(~variable, scales = "free_y")
+    p1
+    
+    group <- rep(1:(p*p), each=n_order+1)
+    ind_Leg0 <- c(0:(p-1))*(p*(n_order+1))+1 + rep(0:(p-1)) * (n_order+1)
+    Leg0 <- seq(1,length(group), by = n_order+1)
+    dep_Leg0 <- setdiff(Leg0, ind_Leg0)
+    group <- group[-dep_Leg0]
+    get_basic <- function(x, n_order,times, name = NULL) {
+      # Generate basis
+      x <- as.numeric(x)
+      P <- split(psi(x), rep(1:n_order, each = length(x)))
+      #integral over times
+      fs = lapply(P,splinefun,x = times)
+      mod <- function (Time, State, Pars, basis) {
+        with(as.list(c(State, Pars)), {
+          dy = basis(Time)
+          return(list(dy))
+        })
+      }
+      Pars <- NULL
+      State <- rep(0,length(P))
+      P_integral <- sapply(1:length(fs),function(xi) 
+        ode(func = mod, y = State[[xi]], parms = Pars, 
+            basis = fs[[xi]], times = times)[,2])
+      if (is.null(name)) {
+        colnames(P_integral) <- paste0("basic", 1:(ncol(P_integral)))
+      } else {
+        colnames(P_integral) <- paste0(name, "__basic", 0:(ncol(P_integral)))
+      }
+      P_integral <- cbind(times, P_integral)
+      P_integral
+    }
+    x_basis <- Reduce(cbind, lapply(1:p, function(xi) {
+      get_basic(x = x_smooth[, xi], n_order,times)
+    }))
+    x_scaled <- scale(x_basis)
+    y_scaled <- scale(data)
+    Y <- matrix(as.vector(y_scaled), ncol = 1)
+    X <- as.matrix(bdiag(rep(list(x_scaled), p)))
+    X <- X[, -dep_Leg0]
+    
+    ## 一起解
+    time_ds <- system.time(
+      res_ds <- ADSIHT(x = X, y = Y, group = group, L = n_order, 
+                       kappa = 0.999, ic.scale = 10, ic.coef = 10))
+    beta_ds <- res_ds$beta[,which.min(res_ds$ic)]
+    beta_ds[which(abs(beta_ds)<res_ds$lambda[which.min(res_ds$ic)])]=0
+    beta0_scaled_ds <- res_ds$intercept[which.min(res_ds$ic)]
+    data_est <- X%*%beta_ds+beta0_scaled_ds
+    matrix(beta_ds,p*n_order+1,p)
+    plot_ori <- cbind(times,Y,rep(1:p,each=length(times)))
+    plot_est <- cbind(times,data_est,rep(1:p,each=length(times)))
+    colnames(plot_ori)=colnames(plot_est)=c("times","value","variable")
+    
+    p3 = ggplot() + geom_point(plot_ori,mapping = aes(x=times, y = value),color = 'black',size=0.1)+
+      geom_line(plot_est, mapping = aes(x=times,y = value,))+
+      theme_minimal() + facet_wrap(~variable, scales = "free_y")
+    p3
+    
+    ## 单独解
+    beta_single <- matrix(nrow = p*n_order+2, ncol = p)  # +1 是给 beta0 预留位置
+    colnames(beta_single) <- 1:p
+    
+    time_single <- system.time(
+    for (n in 1:p){
+      m <- nrow(x_scaled)
+      q <- p*n_order+1
+      X_n <- X[( (n-1)*m + 1 ) : (n*m), ( (n-1)*q + 1 ) : (n*q)]
+      Y_n <- Y[( (n-1)*m + 1 ) : (n*m), ]
+      group_n <- group[( (n-1)*q +1 ) : (n*q)]
+      
+      res_single <- ADSIHT(x = X_n, y = Y_n, group = group_n, L = n_order, 
+                           kappa = 0.99, ic.scale = 10, ic.coef = 10)
+      beta_tem <- res_single$beta[,which.min(res_single$ic)]
+      beta_tem[which(abs(beta_tem)<res_single$lambda[which.min(res_single$ic)])]=0
+      beta0_scaled_single <- res_single$intercept[which.min(res_single$ic)]
+      beta_single[, n] <- c(beta0_scaled_single, beta_tem)
+    })
+    
+    data_est_single <- X %*% as.vector(beta_single[-1,])+rep(beta_single[1,],each=length(times))
+    plot_ori <- cbind(times,Y,rep(1:p,each=length(times)))
+    plot_est <- cbind(times,data_est_single,rep(1:p,each=length(times)))
+    colnames(plot_ori)=colnames(plot_est)=c("times","value","variable")
+    
+    p3 = ggplot() + geom_point(plot_ori,mapping = aes(x=times, y = value),color = 'black',size=0.1)+
+      geom_line(plot_est, mapping = aes(x=times,y = value,))+
+      theme_minimal() + facet_wrap(~variable, scales = "free_y")
+    p3
+    
+    
+    # turn beta
+    order0_positions <- sapply(as.numeric(names(table(group)[table(group) == max(table(group))])), 
+                               function(num) which(group == num)[1])
+    get_B_est <- function(beta,beta0_scaled) {
+      beta_est <- matrix(beta[-order0_positions], nrow = p * n_order, ncol = p)
+      beta_est <- rbind(beta[order0_positions],beta_est)
+      
+      sY <- attr(y_scaled, "scaled:scale")
+      mY <- attr(y_scaled, "scaled:center")
+      sX <- attr(x_scaled, "scaled:scale")
+      sX <- c(sX[1],sX[!grepl("times", names(sX))])
+      mX <- attr(x_scaled, "scaled:center")
+      mX <- c(mX[1],mX[!grepl("times", names(mX))])
+      
+      BETA <- lapply(1:p, function(xi) {
+        beta_orig <- beta_est[, xi] * (sY[xi] / sX)
+        return(beta_orig)
+      })
+      BETA0 <- lapply(1:p, function(xi) {
+        orig_int <- beta0_scaled * sY[xi] + mY[xi] - sum(BETA[[xi]] * mX)
+        return(orig_int)
+      })
+      B_est = t(cbind(unlist(BETA0),t(Reduce(cbind,BETA))))
+      B_est
+    }
+    B_est_ds <- get_B_est(beta=beta_ds, beta0_scaled = beta0_scaled_ds)
+    # B_est_single <-get_B_est(beta=beta_single, beta0_scaled = beta0_scaled_lasso)
+    # x_basis <- cbind(x_basis[,1],x_basis[,!grepl("times", colnames(x_basis))])
+    # x_basis_est = cbind(1,x_basis)
+    
+    return(list(#x_basis = x_basis_est,
+      B_est_ds = B_est_ds,
+      B_est_single = beta_single,
+      x_smooth = x_smooth,
+      time_ds=time_ds,
+      time_single=time_single
+    )) 
+  }
+  res <- ODEsolve(data = obs, times = times, n_order = n_order)
+  
+  B_est_ds = res$B_est_ds
+  B_est_single = res$B_est_single
+  
+  # get_effect_plot <- function(B_est, x_basis_est, times){
+  #   trans_effect_est_list <- lapply(1:p, function(j) {
+  #     effect_est <- cbind(times, rowSums(sapply(1:p, function(xi) x_basis_est[,idx_list[[j]][[xi]]] %*% B_est[idx_list[[j]][[xi]], j])),
+  #                         sapply(1:p, function(xi) x_basis_est[,idx_list[[j]][[xi]]] %*% B_est[idx_list[[j]][[xi]], j]))
+  #     trans_out(effect_est, j)
+  #   })
+  #   effect_est_all <- do.call(rbind, lapply(seq_along(trans_effect_est_list), function(i) {
+  #     df <- trans_effect_est_list[[i]]
+  #     df$equations <- paste0("X", i)
+  #     return(df)
+  #   }))
+  #   
+  #   ori <- as.data.frame(cbind(times,obs))
+  #   ori <- melt(ori,id.vars = 'times')
+  #   ori$equations <- rep(paste0("X", 1:p), each = length(times))
+  #   
+  #   p2 = ggplot()+
+  #     geom_line(effect_all, mapping = aes(x=time,y = value,group = variable,color = group))+
+  #     geom_line(effect_est_all, mapping = aes(x=time,y = value,group = variable,color = group),linetype = 2)+ 
+  #     geom_point(ori,mapping = aes(x=times, y = value),color = 'blue',size=0.05,alpha=0.2)+
+  #     scale_color_manual(values = c(est = 'blue',
+  #                                   Ind = 'red',
+  #                                   Dep = 'green'))+
+  #     theme_minimal() + facet_wrap(~equations, scales = "free_y")+
+  #     labs(x = "Times", y = "Effect Value", color = "")
+  #   p2
+  # }
+  # effect_plot_ds <- get_effect_plot(B_est=B_est_ds, x_basis_est=x_basis_est, times = times)
+  # effect_plot_lasso <- get_effect_plot(B_est=B_est_lasso, x_basis_est=x_basis_est, times = times)
+  # effect_plot_sglasso <- get_effect_plot(B_est=B_est_sglasso, x_basis_est=x_basis_est, times = times)
+  
+  return(list(#effect_plot_ds = effect_plot_ds,
+    #             effect_plot_lasso = effect_plot_lasso,
+    #             effect_plot_sglasso = effect_plot_sglasso,
+    B_est_ds = B_est_ds,
+    B_est_single = B_est_single,
+    time_ds = res$time_ds,
+    time_single = res$time_single))
+}
