@@ -11,9 +11,9 @@ import os
 
 
 os.getcwd()
-n_repeat=20 # repet trils
+#n_repeat=20 # repet trils
 np.random.seed(123) #Reproducibility
-snr = 1 #SNR, nosie level
+#snr = 1 #SNR, nosie level
 cutoff = 0.1 #cutoff for Variable Importance(used in nonlinear_ODE and dynGenie3)
 t = np.arange(0, 1.01, 0.01) #times
 n = len(t) #total samples
