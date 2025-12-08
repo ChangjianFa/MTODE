@@ -28,25 +28,30 @@ This repository contains the simulation code, analysis scripts, and comparison e
   Comparison between integral-based and non-integral modeling approaches.
 
 - **`Compare_with_pySINDY_dynGenie3_nonlinearODE.py`**  
-  Python script comparing our method to pySINDy, dynGENIE3, and nonlinear ODE models.
+  Python script comparing our simulate data(Same as R script) to pySINDy, dynGENIE3, and nonlinear ODE models.
 
 ---
 
-## ⚙️ Requirements
+## ⚙️ Major Requirements
 
 ### R Packages
-- `glmnet`
+- `glmnet`、
+- `ADSIHT`
+- `sglasso`
+- `deSolve`
 - `splines`
 - `ggplot2`
 - `tidyverse`
 - `doParallel`
+
 
 ### Python Packages (for comparison script)
 - `pysindy`
 - `numpy`
 - `scipy`
 - `sklearn`
-- `matplotlib`
+- `xgboost`
+- `pandas`
 
 ---
 
