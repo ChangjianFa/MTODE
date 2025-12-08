@@ -38,7 +38,7 @@ This repository contains the simulation code, analysis scripts, and comparison e
 ## ⚙️ Major Requirements
 
 ### R Packages
-- `glmnet`、
+- `glmnet`
 - `ADSIHT`
 - `sglasso`
 - `deSolve`
