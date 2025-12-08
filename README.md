@@ -29,7 +29,10 @@ This repository contains the simulation code, analysis scripts, and comparison e
 
 - **`Compare_with_pySINDY_dynGenie3_nonlinearODE.py`**  
   Python script comparing our simulate data(Same as R script) to pySINDy, dynGENIE3, and nonlinear ODE models.
-
+  
+### **Data**
+- **`D6.csv`**  
+  Gene expression of Plasmodium falciparum strain D6 from Smith et al. (2020) 
 ---
 
 ## ⚙️ Major Requirements
