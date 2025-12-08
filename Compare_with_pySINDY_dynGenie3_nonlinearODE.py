@@ -970,7 +970,7 @@ def run_dynGenie3(X,t):
     # with open('TS_data.pkl', 'rb') as f:
     #    (TS_data, time_points, decay_rates, gene_names) = pickle.load(f)
 
-    TS_data = list([X_obs, X_obs]) #do not use multiple source, rep X data
+    TS_data = list([X, X]) #do not use multiple source, rep X data
     time_points = list([t, t]) #same as above
     (VIM, alphas, prediction_score, stability_score, treeEstimators) = dynGENIE3(TS_data, time_points)
     # get_link_list(VIM)
@@ -1255,6 +1255,27 @@ def run_n_times(n_repeat=10,snr=10):
     return df
 
 
+"""
+def run_n_times_parallel(n_repeat=10,snr=None, n_jobs=None):
+    if n_jobs is None:
+        n_jobs = max(cpu_count() - 1, 1)   # 留一个 CPU 给系统
+
+    seeds = [1000 + i for i in range(n_repeat)]
+
+    print(f"Using {n_jobs} cores to run {n_repeat} simulations...")
+
+    with Pool(n_jobs) as pool:
+        outs = pool.map(run_once, seeds)
+
+    all_rows = []
+    for seed, out in zip(seeds, outs):
+        for method, vals in out.items():
+            vals['method'] = method
+            vals['seed'] = seed
+            all_rows.append(vals)
+
+    return pd.DataFrame(all_rows)
+"""
 
 def run_n_times_parallel(n_repeat=10, snr=None, n_jobs=None):
     if n_jobs is None:
@@ -1330,7 +1351,7 @@ if __name__ == "__main__":
     print(f"Saved {filenme}")
     """
     filenme = "20P_" + "_Cutoff" + str(cutoff) + "_out.csv"
-    df_all = run_for_snr_range(snr_start=1, snr_end=20, n_repeat=50, n_jobs=50)
+    df_all = run_for_snr_range(snr_start=1, snr_end=20, n_repeat=50, n_jobs=20)
     df_all.to_csv(filenme)
     print(f"Saved {filenme}")
 
