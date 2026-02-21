@@ -15,6 +15,9 @@ This repository contains the simulation code, analysis scripts, and comparison e
 
 - **`Plasmodium_falciparum_gene_expression_analysis.R`**  
   Analysis of *Plasmodium falciparum* strain D6 gene expression data.
+  
+- **`100variable.R`**  
+  Simulation experiments for a 100-variable nonlinear dynamical system.
 
 ### **Method Comparisons**
 
